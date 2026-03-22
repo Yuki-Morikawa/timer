@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="集中タイマー">
+<meta name="theme-color" content="#0d0d0d">
+<title>集中タイマー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Noto+Sans+JP:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d0d0d;
+    --surface: #1a1a1a;
+    --border: rgba(255,255,255,0.1);
+    --text: #f0ede8;
+    --muted: rgba(240,237,232,0.4);
+    --hint: rgba(240,237,232,0.2);
+    --accent: #f0ede8;
+    --warn: #d4954a;
+    --danger: #c95555;
+    --success: #5a9e7a;
+    --font-num: 'DM Mono', monospace;
+    --font-ui: 'Noto Sans JP', sans-serif;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  #app {
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 2rem 3rem;
+    position: relative;
+    transition: background 0.8s ease;
+  }
+
+  /* Background ambient */
+  #app::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse 60% 50% at 50% 100%, var(--glow-color, transparent), transparent);
+    pointer-events: none;
+    transition: opacity 0.8s ease;
+    z-index: 0;
+  }
+
+  #app.phase-warn { --glow-color: rgba(212,149,74,0.12); }
+  #app.phase-danger { --glow-color: rgba(201,85,85,0.15); }
+  #app.phase-done { --glow-color: rgba(90,158,122,0.15); }
+
+  .screen {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 340px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+  .screen.hidden { display: none; }
+
+  /* ── SETUP ── */
+  .setup-label {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 2.5rem;
+    font-weight: 400;
+  }
+
+  .time-inputs {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    margin-bottom: 2.5rem;
+  }
+
+  .unit-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .unit-wrap span {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--hint);
+    text-transform: uppercase;
+  }
+
+  .unit-wrap input {
+    width: 76px;
+    height: 76px;
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: 12px;
+    color: var(--text);
+    font-family: var(--font-num);
+    font-size: 34px;
+    font-weight: 400;
+    text-align: center;
+    -webkit-appearance: none;
+    -moz-appearance: textfield;
+    outline: none;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .unit-wrap input:focus {
+    border-color: rgba(240,237,232,0.35);
+    background: #222;
+  }
+  .unit-wrap input::-webkit-inner-spin-button,
+  .unit-wrap input::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+  .colon {
+    font-family: var(--font-num);
+    font-size: 28px;
+    color: var(--hint);
+    padding-bottom: 14px;
+    padding-left: 2px;
+    padding-right: 2px;
+  }
+
+  .presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 2.5rem;
+  }
+
+  .preset {
+    background: transparent;
+    border: 0.5px solid var(--border);
+    border-radius: 99px;
+    color: var(--muted);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    padding: 7px 16px;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+  }
+  .preset:active {
+    background: var(--surface);
+    color: var(--text);
+    border-color: rgba(240,237,232,0.3);
+  }
+
+  .start-btn {
+    width: 100%;
+    padding: 17px;
+    background: var(--text);
+    color: var(--bg);
+    border: none;
+    border-radius: 14px;
+    font-family: var(--font-ui);
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .start-btn:active { transform: scale(0.98); opacity: 0.9; }
+
+  /* ── TIMER ── */
+  .phase-label {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 2.5rem;
+    min-height: 16px;
+    transition: color 0.5s;
+  }
+
+  .ring-container {
+    position: relative;
+    width: 240px;
+    height: 240px;
+    margin-bottom: 2.5rem;
+  }
+
+  #ring-svg {
+    transform: rotate(-90deg);
+    overflow: visible;
+  }
+
+  #ring-track {
+    fill: none;
+    stroke: rgba(255,255,255,0.07);
+    stroke-width: 3;
+  }
+
+  #ring-fill {
+    fill: none;
+    stroke: var(--text);
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-dasharray: 691;
+    stroke-dashoffset: 0;
+    transition: stroke-dashoffset 0.9s linear, stroke 0.5s ease;
+  }
+
+  .ring-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+  }
+
+  #display-time {
+    font-family: var(--font-num);
+    font-size: 52px;
+    font-weight: 300;
+    letter-spacing: -2px;
+    color: var(--text);
+    transition: color 0.5s;
+    line-height: 1;
+  }
+
+  #overtime-label {
+    font-size: 12px;
+    font-family: var(--font-num);
+    color: var(--danger);
+    min-height: 16px;
+    letter-spacing: 0.04em;
+  }
+
+  .controls {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    margin-bottom: 2rem;
+  }
+
+  .ctrl {
+    flex: 1;
+    padding: 14px;
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: 12px;
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    font-weight: 400;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    letter-spacing: 0.02em;
+  }
+  .ctrl:active { transform: scale(0.97); background: #222; }
+  .ctrl.stop { color: var(--muted); }
+
+  .vis-status {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    color: var(--hint);
+    letter-spacing: 0.04em;
+  }
+
+  .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .dot.off { background: var(--danger); }
+
+  /* ── DONE ── */
+  .done-icon {
+    font-size: 56px;
+    margin-bottom: 1.2rem;
+    animation: pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+  }
+
+  @keyframes pop {
+    0% { transform: scale(0) rotate(-15deg); opacity: 0; }
+    100% { transform: scale(1) rotate(0); opacity: 1; }
+  }
+
+  .done-stars {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 1.5rem;
+  }
+
+  .done-stars svg {
+    animation: star-in 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+  }
+  .done-stars svg:nth-child(2) { animation-delay: 0.12s; }
+  .done-stars svg:nth-child(3) { animation-delay: 0.24s; }
+
+  @keyframes star-in {
+    0% { transform: scale(0) rotate(-20deg); opacity: 0; }
+    100% { transform: scale(1) rotate(0); opacity: 1; }
+  }
+
+  .done-title {
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 0.4rem;
+    letter-spacing: 0.01em;
+  }
+
+  .done-sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 0.3rem;
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  .done-elapsed {
+    font-family: var(--font-num);
+    font-size: 12px;
+    color: var(--hint);
+    margin-bottom: 2.5rem;
+    letter-spacing: 0.04em;
+  }
+
+  .done-btns {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .btn-again {
+    flex: 2;
+    padding: 15px;
+    background: var(--text);
+    color: var(--bg);
+    border: none;
+    border-radius: 12px;
+    font-family: var(--font-ui);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .btn-again:active { transform: scale(0.97); opacity: 0.9; }
+
+  .btn-change {
+    flex: 1;
+    padding: 15px;
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: 12px;
+    color: var(--muted);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .btn-change:active { transform: scale(0.97); background: #222; }
+
+  /* confetti */
+  #confetti {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 100;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="confetti"></canvas>
+
+<div id="app">
+
+  <!-- SETUP -->
+  <div class="screen" id="setup">
+    <div class="setup-label">時間を設定</div>
+    <div class="time-inputs">
+      <div class="unit-wrap">
+        <span>時間</span>
+        <input type="number" id="inp-h" value="0" min="0" max="23">
+      </div>
+      <span class="colon">:</span>
+      <div class="unit-wrap">
+        <span>分</span>
+        <input type="number" id="inp-m" value="25" min="0" max="59">
+      </div>
+      <span class="colon">:</span>
+      <div class="unit-wrap">
+        <span>秒</span>
+        <input type="number" id="inp-s" value="0" min="0" max="59">
+      </div>
+    </div>
+    <div class="presets">
+      <button class="preset" onclick="setTime(0,5,0)">5分</button>
+      <button class="preset" onclick="setTime(0,10,0)">10分</button>
+      <button class="preset" onclick="setTime(0,25,0)">25分</button>
+      <button class="preset" onclick="setTime(0,30,0)">30分</button>
+      <button class="preset" onclick="setTime(0,45,0)">45分</button>
+      <button class="preset" onclick="setTime(1,0,0)">1時間</button>
+    </div>
+    <button class="start-btn" onclick="startTimer()">スタート</button>
+  </div>
+
+  <!-- TIMER -->
+  <div class="screen hidden" id="timer">
+    <div class="phase-label" id="phase-label">集中中</div>
+    <div class="ring-container">
+      <svg id="ring-svg" width="240" height="240" viewBox="0 0 240 240">
+        <circle id="ring-track" cx="120" cy="120" r="110"/>
+        <circle id="ring-fill" cx="120" cy="120" r="110"/>
+      </svg>
+      <div class="ring-center">
+        <div id="display-time">25:00</div>
+        <div id="overtime-label"></div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="ctrl" id="pause-btn" onclick="togglePause()">一時停止</button>
+      <button class="ctrl stop" onclick="stopTimer()">やめる</button>
+    </div>
+    <div class="vis-status">
+      <div class="dot" id="dot"></div>
+      <span id="vis-text">画面を表示中 — タイマー動作中</span>
+    </div>
+  </div>
+
+  <!-- DONE -->
+  <div class="screen hidden" id="done">
+    <div class="done-icon" id="done-icon">✦</div>
+    <div class="done-stars" id="done-stars"></div>
+    <div class="done-title" id="done-title">お疲れさまでした！</div>
+    <div class="done-sub" id="done-sub">見事！時間どおりに完了</div>
+    <div class="done-elapsed" id="done-elapsed"></div>
+    <div class="done-btns">
+      <button class="btn-again" onclick="resetSame()">もう一度</button>
+      <button class="btn-change" onclick="resetNew()">変える</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const CIRC = 2 * Math.PI * 110;
+document.getElementById('ring-fill').style.strokeDasharray = CIRC;
+
+let total = 0, remaining = 0;
+let running = false, paused = false;
+let startedAt = 0, pausedAt = 0, totalPaused = 0;
+let ticker = null;
+let lastH = 0, lastM = 25, lastS = 0;
+
+function setTime(h, m, s) {
+  document.getElementById('inp-h').value = h;
+  document.getElementById('inp-m').value = m;
+  document.getElementById('inp-s').value = s;
+}
+
+function getSecs() {
+  const h = +document.getElementById('inp-h').value || 0;
+  const m = +document.getElementById('inp-m').value || 0;
+  const s = +document.getElementById('inp-s').value || 0;
+  return h * 3600 + m * 60 + s;
+}
+
+function fmt(secs) {
+  const a = Math.abs(secs);
+  const h = Math.floor(a / 3600);
+  const m = Math.floor((a % 3600) / 60);
+  const s = a % 60;
+  const sign = secs < 0 ? '-' : '';
+  if (h > 0) return sign + h + ':' + p(m) + ':' + p(s);
+  return sign + p(m) + ':' + p(s);
+}
+function p(n) { return String(n).padStart(2, '0'); }
+
+function startTimer() {
+  total = getSecs();
+  if (total <= 0) return;
+  lastH = +document.getElementById('inp-h').value || 0;
+  lastM = +document.getElementById('inp-m').value || 0;
+  lastS = +document.getElementById('inp-s').value || 0;
+  remaining = total;
+  paused = false;
+  running = true;
+  startedAt = Date.now();
+  totalPaused = 0;
+  show('timer');
+  render();
+  ticker = setInterval(tick, 200);
+}
+
+function tick() {
+  if (paused || !running) return;
+  const elapsed = Math.floor((Date.now() - startedAt - totalPaused) / 1000);
+  remaining = total - elapsed;
+  render();
+  if (elapsed >= total && running) {
+    running = false;
+    clearInterval(ticker);
+    setTimeout(showDone, 300);
+  }
+}
+
+function togglePause() {
+  if (!running && remaining > 0) { running = true; }
+  paused = !paused;
+  if (paused) {
+    pausedAt = Date.now();
+    document.getElementById('pause-btn').textContent = '再開';
+  } else {
+    totalPaused += Date.now() - pausedAt;
+    document.getElementById('pause-btn').textContent = '一時停止';
+  }
+  render();
+}
+
+function stopTimer() {
+  clearInterval(ticker);
+  running = false;
+  paused = false;
+  show('setup');
+  document.getElementById('app').className = '';
+}
+
+function render() {
+  const rem = Math.max(remaining, 0);
+  const ratio = total > 0 ? rem / total : 0;
+  const offset = CIRC * (1 - ratio);
+  const fill = document.getElementById('ring-fill');
+  const timeEl = document.getElementById('display-time');
+  const phaseEl = document.getElementById('phase-label');
+  const overtimeEl = document.getElementById('overtime-label');
+  const app = document.getElementById('app');
+  const dot = document.getElementById('dot');
+  const visText = document.getElementById('vis-text');
+
+  fill.style.strokeDashoffset = offset;
+
+  if (remaining < 0) {
+    app.className = 'phase-danger';
+    fill.style.stroke = '#c95555';
+    timeEl.style.color = '#c95555';
+    timeEl.textContent = '00:00';
+    overtimeEl.textContent = '+' + fmt(-remaining) + ' オーバー';
+    phaseEl.textContent = '時間オーバー';
+    phaseEl.style.color = '#c95555';
+    fill.style.strokeDashoffset = CIRC * 0.98;
+  } else if (ratio <= 0.2) {
+    app.className = 'phase-danger';
+    fill.style.stroke = '#c95555';
+    timeEl.style.color = '#c95555';
+    timeEl.textContent = fmt(rem);
+    overtimeEl.textContent = '';
+    phaseEl.textContent = '残りわずか！';
+    phaseEl.style.color = '#c95555';
+  } else if (ratio <= 0.5) {
+    app.className = 'phase-warn';
+    fill.style.stroke = '#d4954a';
+    timeEl.style.color = '#d4954a';
+    timeEl.textContent = fmt(rem);
+    overtimeEl.textContent = '';
+    phaseEl.textContent = 'もうひと踏ん張り';
+    phaseEl.style.color = '#d4954a';
+  } else {
+    app.className = '';
+    fill.style.stroke = '#f0ede8';
+    timeEl.style.color = '#f0ede8';
+    timeEl.textContent = fmt(rem);
+    overtimeEl.textContent = '';
+    phaseEl.textContent = paused ? '一時停止中' : '集中中';
+    phaseEl.style.color = 'rgba(240,237,232,0.4)';
+  }
+
+  if (document.hidden) {
+    dot.className = 'dot off';
+    visText.textContent = '画面が非表示 — 一時停止中';
+  } else if (paused) {
+    dot.className = 'dot off';
+    visText.textContent = '一時停止中';
+  } else {
+    dot.className = 'dot';
+    visText.textContent = '画面を表示中 — タイマー動作中';
+  }
+}
+
+function showDone() {
+  show('done');
+  document.getElementById('app').className = 'phase-done';
+  const actual = Math.floor((Date.now() - startedAt - totalPaused) / 1000);
+  const over = actual - total;
+  const elapsed = document.getElementById('done-elapsed');
+  elapsed.textContent = '所要時間: ' + fmt(actual);
+  const sub = document.getElementById('done-sub');
+  const icon = document.getElementById('done-icon');
+  let stars = 3;
+  if (over <= 30) {
+    sub.textContent = '見事！時間どおりに完了しました';
+    icon.textContent = '✦';
+    stars = 3;
+  } else if (over <= 120) {
+    sub.textContent = 'ほぼ時間内！次回はさらに締めて';
+    icon.textContent = '◎';
+    stars = 2;
+  } else {
+    sub.textContent = 'もう少し意識してコンパクトに';
+    icon.textContent = '○';
+    stars = 1;
+  }
+  renderStars(stars);
+  launchConfetti();
+}
+
+function renderStars(n) {
+  const row = document.getElementById('done-stars');
+  row.innerHTML = '';
+  for (let i = 0; i < 3; i++) {
+    const lit = i < n;
+    const col = lit ? '#d4954a' : 'rgba(240,237,232,0.15)';
+    row.innerHTML += `<svg width="26" height="26" viewBox="0 0 24 24" style="animation-delay:${0.08+i*0.13}s"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26" fill="${col}" stroke="${col}" stroke-width="0.5"/></svg>`;
+  }
+}
+
+function launchConfetti() {
+  const canvas = document.getElementById('confetti');
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  const cols = ['#7f77dd','#1d9e75','#d4954a','#c95555','#5a9e7a','#d4537e'];
+  const pieces = Array.from({length: 90}, () => ({
+    x: Math.random() * canvas.width,
+    y: -20 - Math.random() * 200,
+    w: 5 + Math.random() * 7,
+    h: 9 + Math.random() * 5,
+    c: cols[Math.floor(Math.random() * cols.length)],
+    rot: Math.random() * Math.PI * 2,
+    vx: (Math.random() - 0.5) * 3.5,
+    vy: 2.5 + Math.random() * 4,
+    vr: (Math.random() - 0.5) * 0.18,
+    a: 1
+  }));
+  let f = 0;
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    pieces.forEach(p => {
+      p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+      if (f > 55) p.a = Math.max(0, p.a - 0.018);
+      ctx.save();
+      ctx.globalAlpha = p.a;
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.c;
+      ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+      ctx.restore();
+    });
+    f++;
+    if (f < 130) requestAnimationFrame(draw);
+    else ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+  draw();
+}
+
+function show(id) {
+  ['setup','timer','done'].forEach(s => {
+    document.getElementById(s).classList.toggle('hidden', s !== id);
+  });
+}
+
+function resetSame() {
+  setTime(lastH, lastM, lastS);
+  show('setup');
+  document.getElementById('app').className = '';
+}
+function resetNew() {
+  show('setup');
+  document.getElementById('app').className = '';
+}
+
+// 画面非表示でタイマー一時停止
+document.addEventListener('visibilitychange', () => {
+  if (!running) return;
+  if (document.hidden) {
+    if (!paused) { paused = true; pausedAt = Date.now(); document.getElementById('pause-btn').textContent = '再開'; }
+  } else {
+    if (paused && pausedAt) { totalPaused += Date.now() - pausedAt; pausedAt = 0; paused = false; document.getElementById('pause-btn').textContent = '一時停止'; }
+    render();
+  }
+});
+
+// 数値入力の範囲補正
+['inp-h','inp-m','inp-s'].forEach(id => {
+  document.getElementById(id).addEventListener('change', function() {
+    const max = id === 'inp-h' ? 23 : 59;
+    this.value = Math.max(0, Math.min(max, +this.value || 0));
+  });
+});
+</script>
+</body>
+</html>
